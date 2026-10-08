@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    // Allow local public/ images without a remote loader
+    unoptimized: true,
+  },
 };
 
 export default nextConfig;

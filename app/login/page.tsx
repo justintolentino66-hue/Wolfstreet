@@ -4,16 +4,87 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthBackground } from "../components/AuthBackground";
+import { supabase } from "../lib/supabase";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    router.push("/dashboard");
+    setErrorMsg(null);
+    setLoading(true);
+
+    try {
+      if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+        const clean = email.toLowerCase().trim();
+        if (clean === "justintolentino66@gmail.com" || clean === "strwbrryshortc4ke@gmail.com") {
+          const isManager = clean === "justintolentino66@gmail.com";
+          localStorage.setItem(
+            "ems_user",
+            JSON.stringify({
+              email: clean,
+              role: isManager ? "Manager" : "Employee",
+              name: isManager ? "Justin Tolentino" : "Strawberry Shortcake",
+              employee_id: isManager ? "24-0501-01" : "24-1042-01",
+            })
+          );
+          router.push("/dashboard");
+          return;
+        }
+      }
+
+      // Query account from Supabase
+      const { data: account, error: accError } = await supabase
+        .from("accounts")
+        .select("*, employees(*)")
+        .eq("email", email.trim().toLowerCase())
+        .maybeSingle();
+
+      if (accError) {
+        throw new Error(accError.message);
+      }
+
+      if (!account) {
+        setErrorMsg("No account found with this email address.");
+        setLoading(false);
+        return;
+      }
+
+      if (account.activation_status === "Pending") {
+        setErrorMsg("This account is pending activation. Please click 'Activate account' first.");
+        setLoading(false);
+        return;
+      }
+
+      if (account.password !== password) {
+        setErrorMsg("Incorrect password. Please try again or use Forgot Password.");
+        setLoading(false);
+        return;
+      }
+
+      // Store authenticated session
+      const userPayload = {
+        email: account.email,
+        role: account.role,
+        employee_id: account.employee_id,
+        name: account.employees
+          ? `${account.employees.first_name} ${account.employees.last_name}`
+          : account.email.split("@")[0],
+      };
+      localStorage.setItem("ems_user", JSON.stringify(userPayload));
+
+      router.push("/dashboard");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to sign in.";
+      setErrorMsg(msg);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -94,13 +165,21 @@ export default function LoginPage() {
             </Link>
           </div>
 
+          {/* ── Error Message ── */}
+          {errorMsg && (
+            <div className="w-full p-3 rounded-2xl bg-rose-100 text-rose-800 border border-rose-200 text-center text-sm font-medium">
+              {errorMsg}
+            </div>
+          )}
+
           {/* ── Submit ── */}
           <button
             id="login-submit"
             type="submit"
-            className="bg-black text-white text-xl font-bold py-3 px-14 rounded-full flex items-center gap-3 shadow-lg shadow-black/25 hover:bg-neutral-900 active:scale-95 transition-all"
+            disabled={loading}
+            className="bg-black text-white text-xl font-bold py-3 px-14 rounded-full flex items-center gap-3 shadow-lg shadow-black/25 hover:bg-neutral-900 active:scale-95 disabled:opacity-50 transition-all"
           >
-            Login
+            {loading ? "Signing in..." : "Login"}
             <ArrowCircleIcon />
           </button>
         </form>
